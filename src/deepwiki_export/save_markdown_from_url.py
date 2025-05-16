@@ -1,17 +1,22 @@
 import requests
 import os
 import logging # Added for logging
-from .extract_markdown_from_html import MARKDOWN_CHUNK_REGEX,DEFAULT_SEP,DEFAULT_ENCODING,extract_chunks_from_html,save_chunks_to_path
+from pathlib import Path # Added for Path object
+from .extract_markdown_from_html import MARKDOWN_CHUNK_REGEX,DEFAULT_ENCODING,extract_chunks_from_html # DEFAULT_SEP and save_chunks_to_path removed
+from .chunk_processor import save_chunks_to_dir
+from .utils import derive_filename_from_chunk_content # For deriving individual chunk filenames
+# derive_filename_from_url might still be useful for the original HTML filename if desired
+from .utils import derive_filename_from_url
 
 DEEPWIKI_BASE_URL = "https://deepwiki.com/"
 GITHUB_BASE_URL = "https://github.com/"
 
 def save_markdown_from_url(
     target_url: str,
-    markdown_output_path: str,
+    target_output_directory: Path, # Changed from markdown_output_path
     keep_original_html: bool = False,
-    original_html_save_path: str|None = None,
-    sep: str = DEFAULT_SEP,
+    # original_html_save_path is removed, HTML will be saved in target_output_directory
+    # sep parameter is removed as chunks are saved individually
     html_content_encoding: str = DEFAULT_ENCODING,
     markdown_file_encoding: str|None = None,
     request_headers: dict[str, str]|None = None,
@@ -19,19 +24,18 @@ def save_markdown_from_url(
 ) -> bool:
     """
     Downloads HTML from a target URL (DeepWiki or GitHub), extracts content chunks,
-    and saves them as a Markdown file. Optionally saves the original HTML.
+    and saves them as individual Markdown files in a specified directory.
+    Optionally saves the original HTML in the same directory.
 
     The target_url must start with "https://deepwiki.com/" or "https://github.com/".
     GitHub URLs will be transformed to DeepWiki URLs. Other URLs will be rejected.
 
     Args:
         target_url: The URL to process (must be DeepWiki or GitHub).
-        markdown_output_path: Path to save the processed Markdown file.
-        keep_original_html: If True, saves the downloaded HTML.
-        original_html_save_path: Path to save the original HTML.
-                                 If keep_original_html is True and this is None,
-                                 it defaults to markdown_output_path with "_original.html" suffix.
-        sep: Separator for joining Markdown chunks.
+        target_output_directory: Path to the directory where output files will be saved.
+        keep_original_html: If True, saves the downloaded HTML in the target_output_directory.
+        # original_html_save_path removed
+        # sep removed
         html_content_encoding: Encoding for decoding downloaded HTML and saving original HTML.
         markdown_file_encoding: Encoding for the output Markdown file. Defaults to html_content_encoding.
         request_headers: Optional dictionary of headers for the HTTP GET request.
@@ -51,19 +55,19 @@ def save_markdown_from_url(
 
     if url_for_prefix_check.startswith(DEEPWIKI_BASE_URL):
         download_url = target_url # Use original target_url to preserve query params etc.
-        logging.debug(f"Using DeepWiki URL directly: {download_url}")
+        logging.info(f"Using DeepWiki URL directly: {download_url}")
     elif url_for_prefix_check.startswith(GITHUB_BASE_URL):
         # Preserve the part of the URL after the GITHUB_BASE_URL
         # e.g. "RooVetGit/Roo-Code" or "RooVetGit/Roo-Code?query=param"
         path_and_query = target_url[len(GITHUB_BASE_URL):]
         download_url = DEEPWIKI_BASE_URL + path_and_query
-        logging.debug(f"Transformed GitHub URL ({target_url}) to DeepWiki URL: {download_url}")
+        logging.info(f"Transformed GitHub URL ({target_url}) to DeepWiki URL: {download_url}")
     else:
         logging.error(f"Error: Invalid URL. Target URL must start with '{DEEPWIKI_BASE_URL}' or '{GITHUB_BASE_URL}'.")
         logging.error(f"Received URL: {target_url}")
         return False
 
-    logging.debug(f"Attempting to download HTML from: {download_url}")
+    logging.info(f"Attempting to download HTML from: {download_url}")
     html_text: str = ""  # Initialize to ensure definition
     try:
         # Default User-Agent, can be overridden by request_headers
@@ -75,7 +79,7 @@ def save_markdown_from_url(
         response.raise_for_status()  # Raises HTTPError for bad responses (4XX or 5XX)
         
         html_text = response.content.decode(html_content_encoding, errors='replace')
-        logging.debug(f"Successfully downloaded HTML content (length: {len(html_text)} characters).")
+        logging.info(f"Successfully downloaded HTML content (length: {len(html_text)} characters).")
 
     except requests.exceptions.Timeout:
         logging.error(f"Error: Request to {download_url} timed out after {request_timeout} seconds.")
@@ -92,48 +96,58 @@ def save_markdown_from_url(
 
 
     if keep_original_html:
-        save_path_html = original_html_save_path
-        if not save_path_html:
-            base, ext = os.path.splitext(markdown_output_path)
-            save_path_html = base + "_original.html"
+        # Save original HTML in the target_output_directory
+        # Use a fixed name or derive from URL, e.g., "_original_page.html"
+        # For consistency, let's use a name derived from the original URL's filename part
+        original_html_filename_base = derive_filename_from_url(target_url, extension="") # Get base without .md
+        if not original_html_filename_base or original_html_filename_base == "untitled":
+            original_html_filename = "_original_page.html"
+        else:
+            original_html_filename = f"{original_html_filename_base}_original.html"
+            
+        save_path_html = target_output_directory / original_html_filename
         
-        logging.debug(f"Attempting to save original HTML to: {save_path_html}")
+        logging.info(f"Attempting to save original HTML to: {save_path_html.resolve()}")
         try:
-            html_output_dir = os.path.dirname(save_path_html)
-            if html_output_dir and not os.path.exists(html_output_dir): # Ensure dir_name is not empty
-                os.makedirs(html_output_dir, exist_ok=True)
-                logging.debug(f"Created directory for original HTML: {html_output_dir}")
+            # target_output_directory is assumed to be created by cli_tool.py
+            # target_output_directory.mkdir(parents=True, exist_ok=True) # Redundant if cli_tool creates it
 
             with open(save_path_html, 'w', encoding=html_content_encoding, errors='replace') as f:
                 f.write(html_text)
-            logging.debug(f"Original HTML saved successfully to: {save_path_html}")
+            logging.info(f"Original HTML saved successfully to: {save_path_html.resolve()}")
         except IOError as e:
-            logging.warning(f"Warning: Could not save original HTML to {save_path_html}. {e}")
+            logging.warning(f"Warning: Could not save original HTML to {save_path_html.resolve()}. {e}")
             # Continue processing as this is optional
         except Exception as e:
             logging.error(f"An unexpected error occurred while saving original HTML: {e}")
 
 
-    logging.debug("Extracting chunks from HTML content...")
+    logging.info("Extracting chunks from HTML content...")
     markdown_chunks = extract_chunks_from_html(html_text)
     
     if not markdown_chunks:
-        logging.debug(f"No specific content chunks found in the HTML from {download_url} using the defined REGEX.")
-        # save_chunks_to_path will create an empty file if markdown_chunks is empty.
+        logging.info(f"No specific content chunks found in the HTML from {download_url} using the defined REGEX.")
+        # No files will be created if no chunks, which is fine.
+        return True # Considered success as download and extraction (of nothing) happened.
     else:
-        logging.debug(f"Found {len(markdown_chunks)} content chunks.")
+        logging.info(f"Found {len(markdown_chunks)} content chunks to save.")
 
     actual_markdown_encoding = markdown_file_encoding if markdown_file_encoding is not None else html_content_encoding
     
-    logging.debug(f"Attempting to save Markdown to: {markdown_output_path} with encoding {actual_markdown_encoding}")
-    try:
-        save_chunks_to_path(markdown_chunks, markdown_output_path, sep=sep, encoding=actual_markdown_encoding)
-        logging.debug("Markdown file saved successfully.")
+    logging.info(f"Attempting to save Markdown chunks to directory: {target_output_directory.resolve()} with encoding {actual_markdown_encoding}")
+    
+    save_success = save_chunks_to_dir(
+        chunks=markdown_chunks,
+        output_dir=target_output_directory,
+        filename_deriver=derive_filename_from_chunk_content, # from .utils
+        file_extension=".md", # Ensure leading dot
+        encoding=actual_markdown_encoding
+    )
+
+    if save_success:
+        logging.info(f"Markdown chunks successfully saved to {target_output_directory.resolve()}")
         return True
-    except IOError as e:
-        logging.error(f"Error: Could not save Markdown to {markdown_output_path}. {e}")
-        return False
-    except Exception as e:
-        logging.error(f"An unexpected error occurred while saving Markdown: {e}")
+    else:
+        logging.error(f"Failed to save one or more Markdown chunks to {target_output_directory.resolve()}")
         return False
 

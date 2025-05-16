@@ -8,7 +8,11 @@ import logging # Added for logging
 
 from .extract_markdown_from_html import DEFAULT_ENCODING,DEFAULT_SEP,MARKDOWN_CHUNK_REGEX
 from .save_markdown_from_url import save_markdown_from_url
-from .utils import derive_filename_from_url
+from .utils import (
+    derive_filename_from_url, # Still used for fallback or original HTML name
+    derive_username_from_url,
+    derive_reponame_from_url
+)
 
 # --- Version ---
 __version__ = "0.2.0" # Initial version for the CLI tool
@@ -35,41 +39,23 @@ def main(
         ...,
         help="The GitHub or DeepWiki URL to process. GitHub URLs are transformed to DeepWiki."
     ),
-    output_path: Optional[Path] = typer.Argument(
-        None,
-        help="Output path. Can be a file or a directory. "
-             "If a directory, filename is derived from URL. "
-             "If not provided, saves to current directory with URL-derived filename.",
+    output_base_dir: Path = typer.Option(
+        Path("."), # Default to current directory
+        "--output-base-dir", "-o",
+        help="Base directory. A new subdirectory (e.g., username/reponame or derived_name) will be created here to store the output files.",
         dir_okay=True,
-        file_okay=True,
-        writable=True, # Typer checks if parent dir (if path exists) or current dir (if path is new) is writable
-        resolve_path=True, # Resolve ., .., ~ etc. to absolute paths
-        show_default=False # Custom help text is better
-    ),
-    keep_html: bool = typer.Option(
-        False, 
-        "--keep-html",
-        help="Save the original downloaded HTML file."
-    ),
-    html_output: Optional[Path] = typer.Option(
-        None,
-        "--html-output",
-        metavar="PATH_OR_DIR",
-        help="Output path or directory for original HTML. Used only if --keep-html is set. "
-             "If a directory, filename is derived from URL using '.html' extension. "
-             "If --keep-html is set and this is not provided, path is derived from the final Markdown output path.",
-        dir_okay=True,
-        file_okay=True,
+        file_okay=False, # Must be a directory
         writable=True,
         resolve_path=True,
-        show_default=False
+        show_default=True
     ),
-    separator: str = typer.Option(
-        DEFAULT_SEP,
-        "--separator", "--sep",
-        metavar="STRING",
-        help=f"Separator for Markdown chunks. Use '\\n' for newlines. Default: '{DEFAULT_SEP.replace('\n', r'\n')}'"
+    keep_html: bool = typer.Option(
+        False,
+        "--keep-html",
+        help="Save the original downloaded HTML file (will be saved in the auto-generated output subdirectory)."
     ),
+    # html_output option is removed as HTML will be saved in the same auto-generated subdirectory
+    # Separator option is removed as chunks are saved into individual files
     html_encoding: str = typer.Option(
         DEFAULT_ENCODING,
         "--html-encoding",
@@ -127,53 +113,44 @@ def main(
     if MARKDOWN_CHUNK_REGEX is None:
         logging.critical("Critical Configuration Error: The core REGEX pattern failed to compile. Cannot proceed.")
         sys.exit(2)
-    # --- Determine final output paths ---
+    # --- Determine final output directory ---
+    logging.debug(f"Base output directory specified: {output_base_dir.resolve()}")
 
-    derived_md_filename = derive_filename_from_url(url, ".md")
+    username_part = derive_username_from_url(url)
+    reponame_part = derive_reponame_from_url(url) # This will provide a sanitized name
+    logging.debug(f"Derived username_part: '{username_part}'")
+    logging.debug(f"Derived reponame_part: '{reponame_part}'")
 
-    if output_path is None:
-        final_markdown_path = Path.cwd() / derived_md_filename
-        logging.debug(f"Info: No output path specified. Defaulting Markdown output to: {final_markdown_path.resolve()}")
-    elif output_path.is_dir(): # User provided a directory
-        # Typer with resolve_path=True has made output_path absolute.
-        # No need to call mkdir here if using writable=True, Typer checks parent.
-        # However, explicit mkdir is safer if writable=True isn't fully comprehensive.
-        output_path.mkdir(parents=True, exist_ok=True)
-        final_markdown_path = output_path / derived_md_filename
-    else: # User provided a file path
-        final_markdown_path = output_path
-        # Ensure parent directory exists for the file path if it's not the current dir
-        final_markdown_path.parent.mkdir(parents=True, exist_ok=True)
+    if username_part:
+        target_subdir_path = Path(username_part) / reponame_part
+    else:
+        target_subdir_path = Path(reponame_part)
     
-    # Determine final_original_html_save_path for the core function
-    # The core function will use markdown_output_path to derive if this is None
-    actual_original_html_save_path: Optional[Path] = None
-    if keep_html:
-        if html_output is None:
-            # Pass None; core function will derive from final_markdown_path
-            actual_original_html_save_path = None 
-            logging.debug(f"Info: --keep-html is set; --html-output not specified. Original HTML path will be derived from: {final_markdown_path.name}")
-        elif html_output.is_dir():
-            html_output.mkdir(parents=True, exist_ok=True)
-            derived_html_filename = derive_filename_from_url(url, ".html")
-            actual_original_html_save_path = html_output / derived_html_filename
-        else: # html_output is intended as a file path
-            actual_original_html_save_path = html_output
-            actual_original_html_save_path.parent.mkdir(parents=True, exist_ok=True)
+    # output_base_dir is already resolved by Typer
+    final_output_directory = output_base_dir / target_subdir_path
+    
+    logging.info(f"Ensuring output directory exists: {final_output_directory.resolve()}")
+    try:
+        final_output_directory.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        logging.critical(f"Could not create output directory {final_output_directory.resolve()}: {e}")
+        sys.exit(3)
+        
+    # actual_original_html_save_path is no longer needed here,
+    # save_markdown_from_url will handle saving HTML inside final_output_directory if keep_html is True.
     
     final_request_headers: Optional[Dict[str, str]] = None
     if user_agent:
         final_request_headers = {"User-Agent": user_agent}
 
-    processed_separator = separator.replace("\\n", "\n")
-
     # Call the core processing function
     success = save_markdown_from_url(
         target_url=url,
-        markdown_output_path=str(final_markdown_path),
+        # Pass the final directory to save_markdown_from_url
+        target_output_directory=final_output_directory,
         keep_original_html=keep_html,
-        original_html_save_path=str(actual_original_html_save_path) if actual_original_html_save_path else None, # Can be None
-        sep=processed_separator,
+        # original_html_save_path is now handled internally by save_markdown_from_url
+        # sep is removed
         html_content_encoding=html_encoding,
         markdown_file_encoding=md_encoding,
         request_headers=final_request_headers,
@@ -181,16 +158,14 @@ def main(
     )
 
     if success:
-        logging.info(f"Success: Processed '{url}' and saved Markdown to '{final_markdown_path.resolve()}'.")
-        if keep_html and actual_original_html_save_path:
-             logging.info(f"Original HTML saved to '{actual_original_html_save_path.resolve()}'.")
-        elif keep_html and html_output is None: # Path was derived by core function
-             derived_html_path_for_info = final_markdown_path.with_name(f"{final_markdown_path.stem}_original.html")
-             logging.info(f"Original HTML (path derived) saved to '{derived_html_path_for_info.resolve()}'.")
-
+        logging.info(f"Success: Processed '{url}'. Markdown files saved in directory '{final_output_directory.resolve()}'.")
+        if keep_html:
+             # The actual path of the HTML file will be logged by save_markdown_from_url
+             logging.info(f"Original HTML (if saved) is also in '{final_output_directory.resolve()}'.")
+        
         sys.exit(0)
     else:
-        logging.error(f"Error: Failed to process '{url}'. See messages above for details.")
+        logging.error(f"Error: Failed to process '{url}'. Output might be incomplete in '{final_output_directory.resolve()}'. See messages above for details.")
         sys.exit(1)
 
 def _main(*args):
