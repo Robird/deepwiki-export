@@ -1,5 +1,6 @@
 # This file will contain utility functions for the deepwiki_export package.
 import re
+import logging
 from pathlib import Path
 from urllib.parse import urlparse
 from typing import Optional
@@ -125,14 +126,14 @@ def derive_reponame_from_url(url_str: str, default_name: str = "untitled_export"
     sanitized = sanitize_filename_component(name_to_sanitize)
     return sanitized if sanitized else default_name # Ensure not empty after sanitization
 
-def derive_filename_from_chunk_content(content: str, index: int, max_length: int = 50) -> str:
+def derive_filename_from_chunk_content(content: str, index: int, max_length: int = 63) -> str:
     """
-    Derives a sanitized filename from the first line of a content chunk.
+    Derives a sanitized filename from the first line of a content Chunk.
     Falls back to "chapter_{index+1}" if the first line is unsuitable.
 
     Args:
-        content: The content chunk string.
-        index: The index of the chunk (0-based), used for fallback naming.
+        content: The content Chunk string.
+        index: The index of the Chunk (0-based), used for fallback naming.
         max_length: The maximum length for the derived filename (before extension).
 
     Returns:
@@ -143,20 +144,16 @@ def derive_filename_from_chunk_content(content: str, index: int, max_length: int
     # Remove common markdown heading characters like #, ##, etc. from the beginning
     first_line_cleaned = re.sub(r"^\s*#+\s*", "", first_line).strip()
 
-    base_name = ""
+    title = ""
     if first_line_cleaned and len(first_line_cleaned) > 3: # Arbitrary threshold for a meaningful title
-        base_name = sanitize_filename_component(first_line_cleaned)
-        if len(base_name) > max_length:
-            base_name = base_name[:max_length]
+        title = sanitize_filename_component(first_line_cleaned)
+        if len(title) > max_length:
+            title = title[:max_length]
         # Further check if sanitization resulted in empty or just dots/underscores
-        if not base_name or all(c in '._' for c in base_name):
-            base_name = "" # Reset to trigger fallback
-
-    if not base_name:
-        base_name = f"chapter_{index + 1}"
-        
-    # Final sanitization pass for the fallback name too, though usually not needed for "chapter_N"
-    final_sanitized_name = sanitize_filename_component(base_name)
-
-    # Ensure it's not empty after all, though sanitize_filename_component should handle returning "untitled"
-    return final_sanitized_name if final_sanitized_name else f"chapter_{index + 1}_fallback"
+        if not title or all(c in '._' for c in title):
+            title = "" # Reset to trigger fallback
+    if title:
+        title = sanitize_filename_component(title)
+    
+    hr_index = index + 1
+    return f"{hr_index}_{title}"

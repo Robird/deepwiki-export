@@ -54,7 +54,7 @@ def main(
         help="Save the original downloaded HTML file (will be saved in the auto-generated output subdirectory)."
     ),
     # html_output option is removed as HTML will be saved in the same auto-generated subdirectory
-    # Separator option is removed as chunks are saved into individual files
+    # Separator option is removed as Chunks are saved into individual files
     html_encoding: str = typer.Option(
         DEFAULT_ENCODING,
         "--html-encoding",
@@ -113,7 +113,7 @@ def main(
         logging.critical("Critical Configuration Error: The core REGEX pattern failed to compile. Cannot proceed.")
         sys.exit(2)
     # --- Determine final output directory ---
-    logging.debug(f"Base output directory specified: {output_base_dir.resolve()}")
+    logging.debug(f"Base output directory specified: '{output_base_dir.resolve()}'")
 
     username_part = derive_username_from_url(url)
     reponame_part = derive_reponame_from_url(url) # This will provide a sanitized name
@@ -128,12 +128,13 @@ def main(
     # output_base_dir is already resolved by Typer
     final_output_directory = output_base_dir / target_subdir_path
     
-    logging.info(f"Ensuring output directory exists: {final_output_directory.resolve()}")
-    try:
-        final_output_directory.mkdir(parents=True, exist_ok=True)
-    except OSError as e:
-        logging.critical(f"Could not create output directory {final_output_directory.resolve()}: {e}")
-        sys.exit(3)
+    # 改为save_markdown_from_url/save_chunks_to_dir函数内部创建文件夹，为防止为无效目标url创建空文件夹
+    # logging.info(f"Ensuring output directory: '{final_output_directory.resolve()}'")
+    # try:
+    #     final_output_directory.mkdir(parents=True, exist_ok=True)
+    # except OSError as e:
+    #     logging.critical(f"Could not create output directory '{final_output_directory.resolve()}': {e}")
+    #     sys.exit(3)
         
     # actual_original_html_save_path is no longer needed here,
     # save_markdown_from_url will handle saving HTML inside final_output_directory if keep_html is True.
@@ -156,15 +157,14 @@ def main(
         request_timeout=timeout
     )
 
-    if success:
-        logging.info(f"Success: Processed '{url}'. Markdown files saved in directory '{final_output_directory.resolve()}'.")
-        if keep_html:
-             # The actual path of the HTML file will be logged by save_markdown_from_url
-             logging.info(f"Original HTML (if saved) is also in '{final_output_directory.resolve()}'.")
-        
+    if success is None:
+        logging.info(f"Success: Repository Not Indexed '{url}'")        
+        sys.exit(0)
+    elif success:
+        logging.info(f"Success: Processed '{url}'. Chunks saved into '{final_output_directory.resolve()}'")        
         sys.exit(0)
     else:
-        logging.error(f"Error: Failed to process '{url}'. Output might be incomplete in '{final_output_directory.resolve()}'. See messages above for details.")
+        logging.error(f"Error: Failed to process '{url}'. Output might be incomplete in '{final_output_directory.resolve()}'")
         sys.exit(1)
 
 def _main(*args):

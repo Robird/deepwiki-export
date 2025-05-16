@@ -21,7 +21,7 @@ def unescape_javascript_string(s):
         # This is a more aggressive unescape and might not always be correct
         # For example, it might unescape things that shouldn't be.
         # A truly robust solution might involve a proper JS parser or more specific regex.
-        print("Warning: JSON decoding failed for a chunk. Falling back to HTML unescape then unicode_escape.")
+        print("Warning: JSON decoding failed for a Chunk. Falling back to HTML unescape then unicode_escape.")
         temp_unescaped = html.unescape(s) # Handle HTML entities first if any
         try:
             # This handles \uXXXX, \n, \t etc. but can be problematic if there are raw backslashes
@@ -47,7 +47,7 @@ def extract_chunks_from_html(html_content:str) -> List[str]:
         chunk_type = match.group(1) 
         escaped_markdown_chunk = match.group(2)
         
-        # We are interested in the chunks that are likely Markdown content.
+        # We are interested in the Chunks that are likely Markdown content.
         # Based on user's regex, these are typically associated with the number 1 as the first arg.
         # And often start with Markdown-like syntax.
         # For now, let's assume all string content pushed with [1, "..."] is relevant.
@@ -69,11 +69,11 @@ def extract_chunks_from_html_path(file_path:str, encoding:str=DEFAULT_ENCODING) 
 DEFAULT_SEP = "\n---\n"
 
 def chunks_to_str(markdown_chunks:List[str], sep:str=DEFAULT_SEP) -> str:
-    """Joins a list of string chunks into a single string using a separator."""
+    """Joins a list of string Chunks into a single string using a separator."""
     return sep.join(markdown_chunks)
 
 def save_chunks_to_file(markdown_chunks:List[str], fp:TextIO, sep:str=DEFAULT_SEP) -> None:
-    """Writes a list of string chunks to an open file object, separated by sep."""
+    """Writes a list of string Chunks to an open file object, separated by sep."""
     not_first = False
     for chunk in markdown_chunks:
         if not_first:
@@ -82,7 +82,7 @@ def save_chunks_to_file(markdown_chunks:List[str], fp:TextIO, sep:str=DEFAULT_SE
         not_first=True
 
 def save_chunks_to_path(markdown_chunks:List[str],file_path:str,sep:str=DEFAULT_SEP, encoding:str=DEFAULT_ENCODING) -> None:
-    """Saves a list of string chunks to a new file at the given path."""
+    """Saves a list of string Chunks to a new file at the given path."""
     if markdown_chunks:
         # Ensure directory exists
         output_dir = os.path.dirname(file_path)

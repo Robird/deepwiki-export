@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "deepwiki-export"
-version = "0.2.0"
+version = "0.2.1"
 description = "Downloads and processes content from DeepWiki/GitHub URLs into Markdown."
 authors = ["刘世超(RobirdLiu) <RobirdLiu@Gmail.com>"]
 license = "MIT"
