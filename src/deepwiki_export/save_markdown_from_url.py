@@ -1,5 +1,4 @@
 import requests
-import os
 import logging # Added for logging
 from pathlib import Path # Added for Path object
 from .extract_markdown_from_html import MARKDOWN_CHUNK_REGEX,DEFAULT_ENCODING,extract_chunks_from_html # DEFAULT_SEP and save_chunks_to_path removed

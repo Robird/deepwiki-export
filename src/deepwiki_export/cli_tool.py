@@ -6,10 +6,9 @@ from pathlib import Path
 from typing import Optional, Dict
 import logging # Added for logging
 
-from .extract_markdown_from_html import DEFAULT_ENCODING,DEFAULT_SEP,MARKDOWN_CHUNK_REGEX
+from .extract_markdown_from_html import DEFAULT_ENCODING,MARKDOWN_CHUNK_REGEX
 from .save_markdown_from_url import save_markdown_from_url
 from .utils import (
-    derive_filename_from_url, # Still used for fallback or original HTML name
     derive_username_from_url,
     derive_reponame_from_url
 )
