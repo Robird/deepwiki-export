@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "deepwiki-export"
+version = "0.2.0"
+description = "Downloads and processes content from DeepWiki/GitHub URLs into Markdown."
+authors = ["刘世超(RobirdLiu) <RobirdLiu@Gmail.com>"]
+license = "MIT"
+readme = "README.md"  # Assuming you will add a README.md later
+repository = "https://github.com/yourusername/deepwiki-export"  # Placeholder, please update
+homepage = "https://github.com/yourusername/deepwiki-export"  # Placeholder, please update
+keywords = ["deepwiki", "markdown", "export", "cli", "github"]
+
+[tool.poetry.dependencies]
+python = ">=3.12"
+typer = {extras = ["all"], version = "^0.12.3"}
+requests = "^2.32.3"
+
+[tool.poetry.scripts]
+deepwiki-export = "deepwiki_export.cli_tool:app"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2.2"
+pytest-cov = "^5.0.0"
+ruff = "^0.5.0" # For linting and formatting
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
